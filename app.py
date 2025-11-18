@@ -15,12 +15,11 @@ except KeyError:
 st.set_page_config(page_title="날씨 모니터링 대시보드", page_icon="🌦️")
 st.title("🌦️ 실시간 날씨 모니터링 대시보드")
 
-# --- [NEW] 실습 2/3 통합: 데이터 저장을 위한 초기화 ---
-# session_state에 'history' 키가 없으면 빈 리스트로 초기화
+# --- 데이터 저장을 위한 초기화 ---
 if 'history' not in st.session_state:
     st.session_state['history'] = []
 
-# --- 1. 위젯 사용 (기존 기능) ---
+# --- 1. 사이드바: 도시 입력 및 API 호출 ---
 st.sidebar.header("도시 선택")
 city = st.sidebar.text_input("도시 이름을 영어로 입력하세요", "Seoul")
 
@@ -33,15 +32,14 @@ if st.sidebar.button("날씨 정보 가져오기"):
             response.raise_for_status() # 오류가 났을 때 예외 발생
             data = response.json()
 
-            # --- 2. 데이터 표시 (기존 + '실습 3' 통계) ---
+            # --- 2. 현재 날씨 표시 ---
             st.subheader(f"🏙️ {data['name']}의 현재 날씨")
             col1, col2, col3 = st.columns(3)
             col1.metric("🌡️ 기온", f"{data['main']['temp']} °C", f"{data['main']['feels_like']} °C 체감")
             col2.metric("💧 습도", f"{data['main']['humidity']} %")
             col3.metric("💨 풍속", f"{data['wind']['speed']} m/s")
 
-            # --- [NEW] 실습 2/3 통합: 데이터 누적 ---
-            # 현재 데이터를 딕셔너리로 정리
+            # --- 3. 데이터 누적 ---
             current_data = {
                 "도시": data['name'],
                 "기온": data['main']['temp'],
@@ -50,7 +48,6 @@ if st.sidebar.button("날씨 정보 가져오기"):
                 "날씨": data['weather'][0]['description'],
                 "수집 시간": datetime.fromtimestamp(data['dt'])
             }
-            # 세션 기록에 추가
             st.session_state['history'].append(current_data)
 
         except requests.exceptions.HTTPError as err:
@@ -68,77 +65,55 @@ if st.sidebar.button("날씨 정보 가져오기"):
         else:
             st.warning("유효한 API 키를 입력해주세요.")
 
-# --- [NEW] 실습 2/3 통합: 누적 데이터 시각화 (수정 완료) ---
+# --- [수정] 4. 누적 데이터 시각화 (요청사항 반영) ---
 if st.session_state['history']:
-    st.subheader("📊 데이터 수집 기록")
+    st.subheader("📊 전체 데이터 수집 기록")
     
-    # 1. 전체 데이터를 데이터프레임으로 변환
+    # 1. [요청 2] 전체 데이터를 데이터프레임으로 변환하여 항상 표시
     df = pd.DataFrame(st.session_state['history'])
+    # 수집 시간을 기준으로 내림차순 정렬 (최신 데이터가 위로)
+    df_sorted = df.sort_values(by="수집 시간", ascending=False)
+    st.dataframe(df_sorted, use_container_width=True)
 
-    # --- 💡 [수정] 현재 사이드바의 'city' 값으로 데이터 필터링 ---
-    # 'city'는 사이드바의 text_input 값
-    city_df_current = df[df['도시'] == city]
+    # 2. [요청 5] 전체 데이터 CSV 다운로드 버튼
+    # - 정렬된 데이터프레임(df_sorted)을 CSV로 변환
+    csv = df_sorted.to_csv(index=False).encode('utf-8-sig')
+    st.download_button(
+        label="📥 전체 데이터를 CSV로 다운로드",
+        data=csv,
+        file_name='all_weather_history.csv',
+        mime='text/csv'
+    )
+
+    st.divider() # 시각 구분을 위한 구분선
+
+    # 3. [요청 4] 도시별로 그래프 및 통계량 표시
+    # - [요청 1, 3]의 원인이던 기존 로직 및 selectbox 제거
     
-    # 2. 필터링된 데이터가 있는지 확인
-    if not city_df_current.empty:
-        st.info(f"'{city}' 도시의 누적 기록을 표시합니다. (사이드바 기준)")
-        
-        # 3. 필터링된 데이터프레임 표시
-        st.dataframe(city_df_current)
-
-        # 4. 시각화 (꺾은선 그래프) - (💡 city_df_current 사용)
-        st.subheader(f"📈 {city}의 시간에 따른 기온 및 습도 변화")
-        fig_current = px.line(city_df_current, x='수집 시간', y=['기온', '습도'],
-                              title=f"{city} 날씨 변화", markers=True)
-        st.plotly_chart(fig_current, use_container_width=True)
-
-        # 5. 기초 통계량 - (💡 city_df_current 사용)
-        st.subheader(f"📈 {city}의 기초 통계량")
-        st.dataframe(city_df_current[['기온', '습도', '풍속']].describe())
-
-        # 6. CSV 다운로드 버튼 - (💡 city_df_current 사용)
-        csv = city_df_current.to_csv(index=False).encode('utf-8-sig')
-        st.download_button(
-            label=f"📥 {city} 데이터를 CSV로 다운로드",
-            data=csv,
-            file_name=f'{city}_weather_history.csv',
-            mime='text/csv'
-        )
-    else:
-        # (예외 처리) 전체 기록은 있으나, 현재 'city'로 조회된 기록은 없는 경우
-        st.warning(f"'{city}' 도시에 대한 수집 기록이 아직 없습니다. 먼저 날씨 정보를 조회해주세요.")
-    
-    # (선택적) 전체 데이터 원본 표시
-    with st.expander("🗂️ 전체 수집 기록 보기 (모든 도시)"):
-        st.dataframe(df)
-        
-else:
-    st.info("👆 사이드바에서 도시 날씨를 조회하면 기록이 시작됩니다.")
-
-# --- 두 번째 `if st.session_state['history']:` 블록 (오류 수정됨) ---
-# 이 블록은 기록이 있을 때 *항상* 실행되어, 모든 도시 중 선택해서 볼 수 있게 함.
-if st.session_state['history']:
-    # 1. 전체 데이터를 다시 데이터프레임으로 변환
-    df = pd.DataFrame(st.session_state['history'])
-    
-    # 2. 조회된 *모든* 도시 목록 추출
+    # 데이터프레임에서 고유한 도시 목록을 가져옴
     all_cities = df['도시'].unique()
     
-    # 3. 사이드바가 아닌 메인 화면에 selectbox 배치
-    selected_city = st.selectbox("📈 기록을 볼 도시를 선택하세요 (전체)", all_cities)
-    
-    # 4. *선택된* 도시로 필터링
-    city_df_selected = df[df['도시'] == selected_city]
+    for selected_city in all_cities:
+        # 현재 순회 중인 도시의 데이터만 필터링
+        city_df = df[df['도시'] == selected_city]
+        
+        # (1) 도시별 꺾은선 그래프
+        st.subheader(f"📈 {selected_city}의 시간에 따른 기온 및 습도 변화")
+        fig = px.line(city_df, x='수집 시간', y=['기온', '습도'],
+                      title=f"{selected_city} 날씨 변화", markers=True)
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # (2) 도시별 기초 통계량
+        st.subheader(f"📊 {selected_city}의 기초 통계량")
+        st.dataframe(city_df[['기온', '습도', '풍속']].describe(), use_container_width=True)
+        
+        st.divider() # 도시별 섹션 구분
 
-    # 5. 시각화 (꺾은선 그래프) - (💡 city_df_selected 사용)
-    # [오류 수정] (1) 들여쓰기 수정
-    # [오류 수정] (2) {city}가 아닌 {selected_city} 사용
-    st.subheader(f"📈 {selected_city}의 시간에 따른 기온 및 습도 변화 (선택)")
-    fig_selected = px.line(city_df_selected, x='수집 시간', y=['기온', '습도'],
-                           title=f"{selected_city} 날씨 변화", markers=True)
-    st.plotly_chart(fig_selected, use_container_width=True)
+else:
+    # 기록이 하나도 없을 때
+    st.info("👆 사이드바에서 도시 날씨를 조회하면 기록이 시작됩니다.")
 
-# [추가 제안] 사이드바 하단
+# --- 5. 사이드바 하단: 기록 초기화 ---
 if st.sidebar.button("🗑️ 모든 기록 초기화"):
     st.session_state['history'] = []
-    st.rerun() # [오류 수정] st.experimental_rerun() -> st.rerun()
+    st.rerun()
