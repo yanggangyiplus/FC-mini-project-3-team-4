@@ -62,7 +62,7 @@ if st.sidebar.button("날씨 정보 가져오기"):
 
         try:
             response = requests.get(url)
-            response.raise_for_status()
+            response.raise_for_status() # 오류가 났을 때 예외 발생
             data = response.json()
 
             # 도시별 리스트 없으면 생성
