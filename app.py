@@ -119,11 +119,11 @@ if st.session_state['history']:
     # 선택된 도시로 필터링
     city_df = df[df['도시'] == selected_city]
 
-    # (이하 로직은 city_df 사용으로 동일)
-    st.subheader(f"📈 {selected_city}의 시간에 따른 기온 및 습도 변화")
-    fig = px.line(city_df, ...)
-    st.plotly_chart(fig)
-    ...
+    # 4. 시각화 (꺾은선 그래프) - (💡 city_df 사용)
+	st.subheader(f"📈 {city}의 시간에 따른 기온 및 습도 변화")
+	fig = px.line(city_df, x='수집 시간', y=['기온', '습도'],
+             		 title=f"{city} 날씨 변화", markers=True)
+	st.plotly_chart(fig, use_container_width=True)
 
 # [추가 제안] 사이드바 하단
 if st.sidebar.button("🗑️ 모든 기록 초기화"):
